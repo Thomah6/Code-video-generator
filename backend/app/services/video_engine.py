@@ -20,6 +20,7 @@ class VideoEngine:
         lines = code.split('\n')
         current_text = ""
         frame_idx = 0
+        char_count = 0
         
         try:
             font = ImageFont.truetype(self.font_path, self.font_size)
@@ -29,6 +30,13 @@ class VideoEngine:
         for line in lines:
             for char in line:
                 current_text += char
+                char_count += 1
+                
+                # Only create a frame every 5 characters to speed up
+                if char_count % 5 != 0:
+                    continue
+                
+                # Create image
                 img = Image.new('RGB', (self.width, self.height), self.bg_color)
                 draw = ImageDraw.Draw(img)
                 
@@ -42,16 +50,36 @@ class VideoEngine:
                 img.save(f"{output_dir}/frame_{frame_idx:05d}.png")
                 frame_idx += 1
             current_text += "\n"
+            
+            # Always create a frame at end of line
+            img = Image.new('RGB', (self.width, self.height), self.bg_color)
+            draw = ImageDraw.Draw(img)
+            y = 100
+            for l in current_text.split('\n'):
+                draw.text((50, y), l, font=font, fill=self.text_color)
+                y += self.font_size + 10
+            img.save(f"{output_dir}/frame_{frame_idx:05d}.png")
+            frame_idx += 1
 
     def assemble_video(self, frames_dir: str, output_path: str):
-        subprocess.run([
-            'ffmpeg', '-y',
-            '-framerate', str(self.fps),
-            '-i', f'{frames_dir}/frame_%05d.png',
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            output_path
-        ], check=True)
+        """Assemble frames into video using imageio (no system FFmpeg needed)"""
+        import imageio
+        import glob
+        
+        # Get all frame files sorted
+        frame_files = sorted(glob.glob(os.path.join(frames_dir, "frame_*.png")))
+        
+        if not frame_files:
+            raise Exception("No frames found to assemble")
+        
+        # Read frames and create video
+        writer = imageio.get_writer(output_path, fps=self.fps, codec='libx264', pixelformat='yuv420p')
+        
+        for frame_file in frame_files:
+            frame = imageio.imread(frame_file)
+            writer.append_data(frame)
+        
+        writer.close()
 
     def create_final_montage(self, typing_video_path: str, concept_title: str, output_path: str, duration: int):
         """
