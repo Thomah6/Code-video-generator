@@ -77,16 +77,106 @@ class VideoEngine:
         clip.write_videofile(output_path, codec='libx264', audio=False, logger=None)
         clip.close()
 
-    def create_final_montage(self, typing_video_path: str, concept_title: str, output_path: str, duration: int):
+    def execute_and_capture(self, code: str, output_image: str, duration: int):
         """
-        For now, just copy the typing video as final output
-        (Intro/outro with text requires ImageMagick which isn't installed)
+        Execute Python code and capture the final frame as an image
         """
-        import shutil
+        import tempfile
+        import subprocess
+        import time
+        
+        # Modify code to save the final frame
+        modified_code = self._modify_code_for_capture(code, output_image, duration)
+        
+        # Write to temp file
+        code_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+        code_file.write(modified_code)
+        code_file.close()
         
         try:
-            # Simply copy the typing video as the final output
-            shutil.copy2(typing_video_path, output_path)
+            # Execute with timeout
+            result = subprocess.run(
+                ['python', code_file.name],
+                capture_output=True,
+                text=True,
+                timeout=duration + 5
+            )
+            
+            # Check if image was created
+            if not os.path.exists(output_image):
+                # If execution failed or no image, create a placeholder
+                img = Image.new('RGB', (self.width, self.height), (50, 50, 50))
+                draw = ImageDraw.Draw(img)
+                draw.text((100, 900), "Execution completed", fill=(255, 255, 255))
+                img.save(output_image)
+                
+        except subprocess.TimeoutExpired:
+            # Create timeout image
+            img = Image.new('RGB', (self.width, self.height), (50, 50, 50))
+            draw = ImageDraw.Draw(img)
+            draw.text((100, 900), "Execution timeout", fill=(255, 255, 255))
+            img.save(output_image)
+        except Exception as e:
+            # Create error image
+            img = Image.new('RGB', (self.width, self.height), (50, 50, 50))
+            draw = ImageDraw.Draw(img)
+            draw.text((100, 900), f"Error: {str(e)[:50]}", fill=(255, 255, 255))
+            img.save(output_image)
+        finally:
+            # Cleanup
+            if os.path.exists(code_file.name):
+                os.remove(code_file.name)
+    
+    def _modify_code_for_capture(self, code: str, output_image: str, duration: int):
+        """
+        Modify code to save the final frame
+        """
+        # Add imports and save logic based on library used
+        if 'matplotlib' in code:
+            modified = code + f"\n\nimport time\ntime.sleep({duration})\nplt.savefig('{output_image}', dpi=100, bbox_inches='tight')\n"
+        elif 'pygame' in code:
+            modified = code.replace('pygame.quit()', f"pygame.image.save(screen, '{output_image}')\npygame.quit()")
+        elif 'turtle' in code:
+            modified = code + f"\n\nimport time\ntime.sleep({duration})\nts = turtle.getscreen()\nts.getcanvas().postscript(file='{output_image}.eps')\n"
+        else:
+            # Generic: just add a save at the end
+            modified = code + f"\n\n# Auto-added: save output\nimport matplotlib.pyplot as plt\nplt.savefig('{output_image}')\n"
+        
+        return modified
+
+    def create_final_montage(self, typing_video_path: str, result_image_path: str, output_path: str, duration: int):
+        """
+        Create final video: typing + static result image
+        """
+        from moviepy.editor import VideoFileClip, ImageClip, concatenate_videoclips
+        
+        try:
+            # Load typing video
+            typing_clip = VideoFileClip(typing_video_path)
+            
+            # Speed up typing (2x faster)
+            typing_fast = typing_clip.fx(lambda c: c.speedx(2.0))
+            
+            # Create clip from result image (show for 5 seconds)
+            result_clip = ImageClip(result_image_path).set_duration(5)
+            
+            # Concatenate
+            final = concatenate_videoclips([typing_fast, result_clip])
+            
+            # Write final video
+            final.write_videofile(
+                output_path,
+                fps=self.fps,
+                codec='libx264',
+                audio=False,
+                logger=None
+            )
+            
+            # Cleanup
+            typing_clip.close()
+            result_clip.close()
+            final.close()
+            
             return output_path
             
         except Exception as e:

@@ -68,15 +68,21 @@ async def generate_video(config: VideoConfig):
         video_engine.assemble_video(frames_dir, typing_video)
         logger.info("✅ Typing video assembled")
         
-        # Step 6: Create final montage
-        logger.info("🎬 Step 8: Creating final montage...")
+        # Step 6: Execute code and capture result
+        logger.info("🎮 Step 8: Executing code and capturing result...")
+        result_image = os.path.join(temp_dir, "result.png")
+        video_engine.execute_and_capture(code, result_image, config.duration)
+        logger.info("✅ Code executed and result captured")
+        
+        # Step 7: Create final montage
+        logger.info("🎬 Step 9: Creating final montage...")
         output_dir = os.path.join(os.path.dirname(__file__), "..", "..", "videos")
         os.makedirs(output_dir, exist_ok=True)
         
         final_video = os.path.join(output_dir, f"{job_id}.mp4")
         video_engine.create_final_montage(
             typing_video_path=typing_video,
-            concept_title=concept['title'],
+            result_image_path=result_image,
             output_path=final_video,
             duration=config.duration
         )
