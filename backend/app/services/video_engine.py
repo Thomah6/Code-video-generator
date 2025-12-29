@@ -62,8 +62,8 @@ class VideoEngine:
             frame_idx += 1
 
     def assemble_video(self, frames_dir: str, output_path: str):
-        """Assemble frames into video using imageio (no system FFmpeg needed)"""
-        import imageio
+        """Assemble frames into video using MoviePy (no system FFmpeg needed)"""
+        from moviepy.editor import ImageSequenceClip
         import glob
         
         # Get all frame files sorted
@@ -72,66 +72,21 @@ class VideoEngine:
         if not frame_files:
             raise Exception("No frames found to assemble")
         
-        # Read frames and create video
-        writer = imageio.get_writer(output_path, fps=self.fps, codec='libx264', pixelformat='yuv420p')
-        
-        for frame_file in frame_files:
-            frame = imageio.imread(frame_file)
-            writer.append_data(frame)
-        
-        writer.close()
+        # Create video from image sequence
+        clip = ImageSequenceClip(frame_files, fps=self.fps)
+        clip.write_videofile(output_path, codec='libx264', audio=False, logger=None)
+        clip.close()
 
     def create_final_montage(self, typing_video_path: str, concept_title: str, output_path: str, duration: int):
         """
-        Create final video with intro, typing effect, and outro
+        For now, just copy the typing video as final output
+        (Intro/outro with text requires ImageMagick which isn't installed)
         """
+        import shutil
+        
         try:
-            # Load typing video
-            typing_clip = VideoFileClip(typing_video_path)
-            
-            # Speed up typing (2x faster)
-            typing_clip = typing_clip.fx(lambda c: c.speedx(2.0))
-            
-            # Create intro (2 seconds)
-            intro_bg = ColorClip(size=(self.width, self.height), color=(103, 58, 183), duration=2)
-            intro_text = TextClip(
-                concept_title,
-                fontsize=70,
-                color='white',
-                font='Arial-Bold',
-                size=(self.width - 100, None),
-                method='caption'
-            ).set_position('center').set_duration(2)
-            intro = CompositeVideoClip([intro_bg, intro_text])
-            
-            # Create outro (2 seconds)
-            outro_bg = ColorClip(size=(self.width, self.height), color=(103, 58, 183), duration=2)
-            outro_text = TextClip(
-                "Follow pour plus! 🔥",
-                fontsize=60,
-                color='white',
-                font='Arial-Bold'
-            ).set_position('center').set_duration(2)
-            outro = CompositeVideoClip([outro_bg, outro_text])
-            
-            # Concatenate all clips
-            final = concatenate_videoclips([intro, typing_clip, outro])
-            
-            # Write final video
-            final.write_videofile(
-                output_path,
-                fps=self.fps,
-                codec='libx264',
-                audio=False,
-                preset='medium'
-            )
-            
-            # Cleanup
-            typing_clip.close()
-            intro.close()
-            outro.close()
-            final.close()
-            
+            # Simply copy the typing video as the final output
+            shutil.copy2(typing_video_path, output_path)
             return output_path
             
         except Exception as e:
